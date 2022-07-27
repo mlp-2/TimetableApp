@@ -5,30 +5,18 @@ namespace TimetableApp.Data.Utils;
 
 public class TimetableProvider : ITimetableProvider
 {
+    private static TimetableDbContext db;
+
     public Task<IEnumerable<Timetable>> GetTimetablesAsync(DateOnly dateStart, DateOnly dateEnd)
     {
-        using TimetableDbContext db = new TimetableDbContext();
-
-        var getTimetable = new List<Timetable>();
-        var date = dateStart;
-
-        while (dateStart <= date && date <= dateEnd)
-        {
-            var TimetableExemplar = db.Timetables.FirstOrDefault(item => item.Date == new DateTime(date.Year, date.Month, date.Day));
-            if (TimetableExemplar != null)
-            {
-                getTimetable.Add(TimetableExemplar);
-            }
-            date.AddDays(1);
-        }
+        var timetables = db.Timetables.Select(item => item).ToArray();
+        var getTimetable = db.Timetables.Where(item => new DateTime(dateStart.Year, dateStart.Month, dateStart.Day) <= item.Date && item.Date <= new DateTime(dateEnd.Year, dateEnd.Month, dateEnd.Day) && TimetablesConflictDetector.ConflictExists(item, timetables));
 
         return Task.FromResult<IEnumerable<Timetable>>(getTimetable);
     }
 
     public Task<Timetable> CreateTimetableAsync(TimetableBuilder timetableBuilder)
     {
-        using TimetableDbContext db = new TimetableDbContext();
-
         var timetables = db.Timetables.Select(item => item).ToArray();
         var timetableExemplar = timetableBuilder.Build();
 
@@ -43,24 +31,22 @@ public class TimetableProvider : ITimetableProvider
 
     public Task<Timetable> EditTimetableAsync(long timetableId, TimetableEditor editor)
     {
-        using TimetableDbContext db = new TimetableDbContext();
+        var timetables = db.Timetables.Select(item => item).ToArray();
+        var timetableExemplar = db.Timetables.FirstOrDefault(item => item.Id == timetableId && TimetablesConflictDetector.ConflictExists(item, timetables));
 
-        var TimetableExemplar = db.Timetables.FirstOrDefault(item => item.Id == timetableId);
+        editor.Edit(timetableExemplar);
+        db.Timetables.Update(timetableExemplar);
+        db.SaveChangesAsync();
 
-        editor.Edit(TimetableExemplar);
-        db.Timetables.Update(TimetableExemplar);
-        db.SaveChanges();
-
-        return Task.FromResult(TimetableExemplar);
+        return Task.FromResult(timetableExemplar);
     }
 
     public Task DeleteTimetableAsync(long timetableId)
     {
-        using TimetableDbContext db = new TimetableDbContext();
-
         var TimetableExemplar = db.Timetables.FirstOrDefault(item => item.Id == timetableId);
+        
         db.Timetables.Remove(TimetableExemplar);
-        db.SaveChanges();
+        db.SaveChangesAsync();
 
         return Task.FromResult(TimetableExemplar);
     }
